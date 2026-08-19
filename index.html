@@ -1,20 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Wirahasta Hasil Bumi v2.0 - P2P Network Edition v0.12</title>
-
- <!-- PWA Meta Tags & Manifest Link -->
- <link rel="manifest" href="manifest.json">
- <meta name="theme-color" content="#047857">
- <meta name="apple-mobile-web-app-capable" content="yes">
- <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
- <meta name="apple-mobile-web-app-title" content="Wirahasta P2P">
- <link rel="apple-touch-icon" href="assets/icons/icon-192x192.png">
-
- <!-- Assets Local -->
  <script src="assets/js/tailwindcss.js"></script>
  <link rel="stylesheet" href="assets/css/all.min.css">
  <script src="assets/js/dexie.js"></script>
@@ -57,11 +46,6 @@
 
  <button id="btnConnectMaster" onclick="promptConnectToMaster()" class="hidden bg-yellow-500 hover:bg-yellow-600 text-emerald-950 font-bold px-2 py-1 rounded shadow">
  <i class="fa-solid fa-plug"></i> Hubungkan
- </button>
-
- <!-- Tombol Install PWA -->
- <button id="btnInstallPWA" onclick="installPWA()" class="hidden bg-yellow-400 hover:bg-yellow-500 text-emerald-950 font-bold px-2 py-1 rounded shadow flex items-center gap-1">
- <i class="fa-solid fa-download"></i> Install App
  </button>
  </div>
  </div>
@@ -110,8 +94,15 @@
 
  <div class="bg-white p-4 rounded-lg shadow border border-gray-200">
  <h2 class="font-bold text-gray-700 mb-3 border-b pb-2"><i class="fa-solid fa-clock-rotate-left mr-1"></i> Titip</h2>
- <div id="titipGridContainer" class="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
- <p class="text-center py-4 text-gray-400 italic col-span-full">Tidak ada data transaksi belum bayar</p>
+ <div id="titipContainer" class="space-y-2">
+ <div id="titipGridContainer" class="space-y-2">
+ <p class="text-center py-4 text-gray-400 italic">Tidak ada data transaksi belum bayar</p>
+ </div>
+ </div>
+ <div class="mt-4 pt-3 border-t flex justify-end">
+ <button onclick="kirimDaftarTitipWA()" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded text-sm shadow flex items-center gap-2">
+ <i class="fa-brands fa-whatsapp text-lg"></i> Kirim WA
+ </button>
  </div>
  </div>
 
@@ -277,7 +268,6 @@
 
  </main>
 
- <!-- Modal Modals Same as Original File -->
  <div id="modalPelanggan" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex justify-center items-center z-50">
  <div class="bg-white p-5 rounded-lg shadow-lg w-full max-w-md">
  <h3 class="font-bold text-lg mb-3 border-b pb-2">Input Pelanggan Baru</h3>
@@ -406,7 +396,6 @@
  </div>
  </div>
 
-
  <div id="modalSelesaikanDeposit" class="hidden fixed inset-0 bg-gray-900 bg-opacity-50 flex justify-center items-center z-50">
  <div class="bg-white p-5 rounded-lg shadow-lg w-full max-w-md">
  <h3 class="font-bold text-lg mb-3 border-b pb-2"><i class="fa-solid fa-hand-holding-dollar mr-1"></i> Penyelesaian Deposit</h3>
@@ -442,8 +431,10 @@
  </div>
  </footer>
 
- <!-- Original Logic Script -->
  <script>
+ /* ==========================================================================
+ 1. DATABASE INITIALIZATION (DEXIE.JS)
+ ========================================================================== */
  const ALLOWED_TRANSACTION_TYPES = [
  'NOTA_TITIP_JUAL',
  'PELUNASAN_TITIP',
@@ -463,6 +454,7 @@
  transaksi: '++id, tanggal, tipe, rincian, nominalOrQty, terminalId, refId'
  });
 
+ // Helper Format Nominal K (e.g., 2500 -> 2k5, 10000 -> 10k)
  function formatNominalK(val) {
  const absVal = Math.abs(val);
  const thousands = Math.floor(absVal / 1000);
@@ -476,14 +468,16 @@
  return val < 0 ? `-${formatted}` : formatted;
  }
 
+ // Helper untuk menyimpan transaksi dengan validasi Whitelist Tipe Transaksi
  async function addValidatedTransaksi(transaksiObj) {
  if (!ALLOWED_TRANSACTION_TYPES.includes(transaksiObj.tipe)) {
- console.warn(`[REJECTED] Tipe transaksi '${transaksiObj.tipe}' tidak terdaftar!`);
+ console.warn(`[REJECTED] Tipe transaksi '${transaksiObj.tipe}' tidak terdaftar/diizinkan! Transaksi tidak dimasukkan ke tabel database.`);
  return null;
  }
  return await db.transaksi.add(transaksiObj);
  }
 
+ // Seed Data Awal jika Kosong
  db.on("populate", () => {
  db.barang.bulkAdd([
  { sku: 'BRG-01', nama: 'Beras Premium 5kg', hppDefault: 60000, hargaJual: 68000, stok: 50 },
@@ -502,6 +496,9 @@
  ]);
  });
 
+ /* ==========================================================================
+ 2. GLOBAL STATE & P2P NETWORK ENGINE (PEERJS)
+ ========================================================================== */
  let currentRole = 'STANDALONE';
  let peer = null;
  let p2pConn = null;
@@ -636,6 +633,9 @@
  }
  }
 
+ /* ==========================================================================
+ 3. POP-UP MODALS & TRIGGER INPUT BARU
+ ========================================================================== */
  function closeModal(modalId) {
  document.getElementById(modalId).classList.add('hidden');
  }
@@ -665,6 +665,7 @@
  document.getElementById('titipPelangganInput').value = nama;
  }
 
+ /* Modal Tambah & Update Barang */
  async function openModalTambahBarangDirect() {
  if (currentRole === 'CLIENT') return;
  document.getElementById('modalBarangTitle').innerText = "Tambah Barang Baru";
@@ -770,6 +771,7 @@ await populateSelectBarangEdit();
  document.getElementById('titipBarangInput').value = nama;
  }
 
+ /* Modal Kategori Kas Masuk & Keluar Trigger */
  function checkNewKategoriMasukTrigger(val) {
  if (val === '+input baru') {
  document.getElementById('modalKategoriTargetType').value = 'MASUK';
@@ -808,6 +810,7 @@ await populateSelectBarangEdit();
  }
  }
 
+ /* Modal Selesaikan Deposit */
  async function openModalSelesaikanDeposit(pelangganId) {
  const pel = await db.pelanggan.get(pelangganId);
  if (!pel || !pel.deposit) return;
@@ -855,8 +858,10 @@ await populateSelectBarangEdit();
  rincianTeks = `Penyelesaian Deposit: Tarik kurang bayar dari pelanggan ${pel.nama} (Rp ${nominalAbs.toLocaleString()})`;
  }
 
+ // 1. Ubah deposit pelanggan menjadi 0
  await db.pelanggan.update(pelId, { deposit: 0 });
 
+ // 2. Catat ke tabel transaksi sebagai aktivitas PENYELESAIAN_DEPOSIT
  await addValidatedTransaksi({
  tanggal: tgl,
  tipe: 'PENYELESAIAN_DEPOSIT',
@@ -870,6 +875,9 @@ await populateSelectBarangEdit();
  refreshUI();
  }
 
+ /* ==========================================================================
+ 4. LOGIKA JUAL / KONSINYASI & PELUNASAN
+ ========================================================================== */
  async function prosesTitipJualBaru(e) {
  e.preventDefault();
  const namaPelanggan = document.getElementById('titipPelangganInput').value.trim();
@@ -894,6 +902,7 @@ await populateSelectBarangEdit();
  terminalId: terminalId
  });
 
+ // Catat Ke Database Transaksi (Titip Jual)
  await addValidatedTransaksi({
  tanggal: tgl,
  tipe: 'NOTA_TITIP_JUAL',
@@ -972,8 +981,10 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  const tgl = new Date().toISOString();
  const terminalId = currentRole === 'CLIENT' ? 'Client-' + peer.id : 'Local';
 
+ // Update Status Nota Titip
  await db.titipJual.update(id, { status: 'LUNAS' });
 
+ // Catat Pelunasan
  const pelunasanId = await db.pelunasanTitip.add({
  tanggal: tgl,
  idTitip: id,
@@ -984,11 +995,13 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  terminalId: terminalId
  });
 
+ // Update Deposit Pelanggan
  const pel = await db.pelanggan.where('nama').equalsIgnoreCase(activeTitipItemForPayment.namaPelanggan).first();
  if (pel) {
  await db.pelanggan.update(pel.id, { deposit: (pel.deposit || 0) + selisihDeposit });
  }
 
+ // Catat Ke Database Transaksi (Pelunasan Titip Jual)
  await addValidatedTransaksi({
  tanggal: tgl,
  tipe: 'PELUNASAN_TITIP',
@@ -1002,6 +1015,9 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  refreshUI();
  }
 
+ /* ==========================================================================
+ 5. LOGIKA KAS OPERASIONAL (MASUK & KELUAR)
+ ========================================================================== */
  async function prosesKasMasuk(e) {
  e.preventDefault();
  const kategori = document.getElementById('kasMasukKategoriInput').value.trim();
@@ -1024,6 +1040,7 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  terminalId: terminalId
  });
 
+ // Catat Ke Database Transaksi (Kas Masuk)
  await addValidatedTransaksi({
  tanggal: tgl,
  tipe: 'KAS_MASUK',
@@ -1059,6 +1076,7 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  terminalId: terminalId
  });
 
+ // Catat Ke Database Transaksi (Kas Keluar)
  await addValidatedTransaksi({
  tanggal: tgl,
  tipe: 'KAS_KELUAR',
@@ -1072,25 +1090,38 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  refreshUI();
  }
 
+ /* ==========================================================================
+ 6. REFRESH UI & UTILITIES
+ ========================================================================== */
  async function refreshUI() {
  const barangList = await db.barang.toArray();
  const pelangganList = await db.pelanggan.toArray();
  const kasKategoriList = await db.kategoriKas.toArray();
 
+ // Map ID Pelanggan dan Map SKU Barang
  const pelangganMap = {};
  pelangganList.forEach(p => {
  pelangganMap[p.nama] = p.idPelanggan || p.nama;
  });
 
+ const barangMap = {};
+ barangList.forEach(b => {
+ barangMap[b.nama] = b.sku || b.nama;
+ });
+
+ // Populate Datalist Pelanggan
  const pelangganOptionsHtml = pelangganList.map(p => `<option value="${p.nama}">`).join('') + '<option value="+input baru">+input baru</option>';
  document.getElementById('pelangganListOptions').innerHTML = pelangganOptionsHtml;
 
+ // Populate Datalist Barang
  const barangOptionsHtml = barangList.map(b => `<option value="${b.nama}">`).join('') + '<option value="+input baru">+input baru</option>';
  document.getElementById('barangListOptions').innerHTML = barangOptionsHtml;
 
+ // Populate Pihak Kas Masuk & Keluar (Menggunakan Datalist Pelanggan)
  document.getElementById('pihakKasMasukOptions').innerHTML = pelangganOptionsHtml;
  document.getElementById('pihakKasKeluarOptions').innerHTML = pelangganOptionsHtml;
 
+ // Populate Datalist Kategori Kas Masuk & Keluar
  const listMasuk = kasKategoriList.filter(k => k.jenis === 'MASUK');
  const kategoriMasukOptionsHtml = listMasuk.map(k => `<option value="${k.nama}">`).join('') + '<option value="+input baru">+input baru</option>';
  document.getElementById('kategoriMasukOptions').innerHTML = kategoriMasukOptionsHtml;
@@ -1099,21 +1130,30 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  const kategoriKeluarOptionsHtml = listKeluar.map(k => `<option value="${k.nama}">`).join('') + '<option value="+input baru">+input baru</option>';
  document.getElementById('kategoriKeluarOptions').innerHTML = kategoriKeluarOptionsHtml;
 
+ // Populate List Titip (Belum Bayar) - Berisi ID Pelanggan, Qty Titip, SKU Barang, dan Tombol Ambil
  const listBelumBayar = await db.titipJual.where('status').equals('BELUM_BAYAR').reverse().toArray();
  const titipGridContainer = document.getElementById('titipGridContainer');
  if (listBelumBayar.length === 0) {
- titipGridContainer.innerHTML = '<p class="text-center py-4 text-gray-400 italic col-span-full">Tidak ada data transaksi belum bayar</p>';
+ titipGridContainer.innerHTML = '<p class="text-center py-4 text-gray-400 italic">Tidak ada data transaksi belum bayar</p>';
  } else {
  titipGridContainer.innerHTML = listBelumBayar.map(item => {
  const idPlg = pelangganMap[item.namaPelanggan] || item.namaPelanggan;
+ const skuBrg = barangMap[item.namaBarang] || item.namaBarang;
  return `
- <div onclick="openModalBayar(${item.id})" class="cursor-pointer bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-950 p-3 rounded-lg shadow-sm text-center flex flex-col justify-center items-center transition-all">
- <span class="font-bold text-sm select-none">${idPlg}</span>
+ <div class="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-950 p-3 rounded-lg shadow-sm flex flex-wrap items-center justify-between gap-2 transition-all">
+ <div class="flex items-center gap-3 flex-wrap">
+ <span class="font-bold text-sm bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded">${idPlg}</span>
+ <span class="text-sm font-semibold text-gray-700"><strong class="font-mono text-emerald-900">${skuBrg}</strong></span>
+ <span class="text-sm font-semibold text-gray-700"><strong class="text-emerald-900">${item.qtyTitip}</strong></span>
+ </div>
+ <button onclick="openModalBayar(${item.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3 py-1.5 rounded shadow flex items-center gap-1">
+ <i class="fa-solid fa-hand-holding-dollar"></i></button>
  </div>
  `;
  }).join('');
  }
 
+ // Populate Card View Deposit Pelanggan (CSS Grid Auto-fit)
  const activeDepositList = pelangganList.filter(p => (p.deposit || 0) !== 0);
  const depositGridContainer = document.getElementById('depositGridContainer');
  if (activeDepositList.length === 0) {
@@ -1132,6 +1172,7 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  }).join('');
  }
 
+ // Populate Form Tabel Database Pelanggan
  const masterPelangganTbody = document.getElementById('masterPelangganTableBody');
  masterPelangganTbody.innerHTML = pelangganList.map(p => `
  <tr>
@@ -1142,6 +1183,7 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  </tr>
  `).join('');
 
+ // Populate Form Tabel Database Barang
  const masterBarangTbody = document.getElementById('masterBarangTableBody');
  masterBarangTbody.innerHTML = barangList.map(b => `
  <tr>
@@ -1153,7 +1195,8 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  </tr>
  `).join('');
 
- const listTransaksi = await db.transaksi.toArray();
+ // Populate Form Tabel Database Transaksi dengan Kalkulasi Saldo Kas
+ const listTransaksi = await db.transaksi.toArray(); // Ascending
  const masterTransaksiTbody = document.getElementById('masterTransaksiTableBody');
  if (listTransaksi.length === 0) {
  masterTransaksiTbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-400 italic">Belum ada data transaksi</td></tr>';
@@ -1203,6 +1246,31 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  }
  }
 
+ async function kirimDaftarTitipWA() {
+ const listBelumBayar = await db.titipJual.where('status').equals('BELUM_BAYAR').toArray();
+ const pelangganList = await db.pelanggan.toArray();
+ const barangList = await db.barang.toArray();
+
+ const pelangganMap = {};
+ pelangganList.forEach(p => pelangganMap[p.nama] = p.idPelanggan || p.nama);
+
+ const barangMap = {};
+ barangList.forEach(b => barangMap[b.nama] = b.sku || b.nama);
+
+ let csvContent = "";
+ listBelumBayar.forEach(item => {
+ const idPlg = pelangganMap[item.namaPelanggan] || item.namaPelanggan;
+ const skuBrg = barangMap[item.namaBarang] || item.namaBarang;
+ csvContent += `${idPlg},${skuBrg},${item.qtyTitip},
+`;
+ });
+
+ const targetNumber = "6282323707088";
+ const encodedText = encodeURIComponent(csvContent);
+ const waUrl = `https://wa.me/${targetNumber}?text=${encodedText}`;
+ window.open(waUrl, '_blank');
+ }
+
  function switchTab(tabName) {
  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('bg-emerald-900', 'border-b-2', 'border-yellow-400'));
@@ -1216,6 +1284,9 @@ const returInput = document.getElementById('pelunasanQtyRetur');
  navigator.clipboard.writeText(idText);
  }
 
+ /* ==========================================================================
+ 7. BACKUP & RESTORE DATABASE (JSON)
+ ========================================================================== */
  async function backupDatabaseJSON() {
  try {
  const exportData = {
@@ -1286,57 +1357,6 @@ const a = document.createElement('a');
  };
  reader.readAsText(file);
  }
- </script>
-
- <!-- ==========================================================================
-      PWA SERVICE WORKER REGISTRATION & INSTALL PROMPT LOGIC
-      ========================================================================== -->
- <script>
- let deferredPrompt = null;
-
- // Registrasi Service Worker
- if ('serviceWorker' in navigator) {
-   window.addEventListener('load', () => {
-     navigator.serviceWorker.register('./sw.js')
-       .then((reg) => {
-         console.log('[PWA] Service Worker registered with scope:', reg.scope);
-       })
-       .catch((err) => {
-         console.error('[PWA] Service Worker registration failed:', err);
-       });
-   });
- }
-
- // Menangkap Event Install Prompt PWA
- window.addEventListener('beforeinstallprompt', (e) => {
-   e.preventDefault();
-   deferredPrompt = e;
-   const btnInstall = document.getElementById('btnInstallPWA');
-   if (btnInstall) {
-     btnInstall.classList.remove('hidden');
-   }
- });
-
- function installPWA() {
-   if (!deferredPrompt) return;
-   deferredPrompt.prompt();
-   deferredPrompt.userChoice.then((choiceResult) => {
-     if (choiceResult.outcome === 'accepted') {
-       console.log('[PWA] User accepted the install prompt');
-     } else {
-       console.log('[PWA] User dismissed the install prompt');
-     }
-     deferredPrompt = null;
-     const btnInstall = document.getElementById('btnInstallPWA');
-     if (btnInstall) btnInstall.classList.add('hidden');
-   });
- }
-
- window.addEventListener('appinstalled', () => {
-   console.log('[PWA] Application successfully installed');
-   const btnInstall = document.getElementById('btnInstallPWA');
-   if (btnInstall) btnInstall.classList.add('hidden');
- });
  </script>
 </body>
 </html>
